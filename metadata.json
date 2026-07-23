@@ -1,0 +1,6 @@
+{
+  "name": "Easy English - Cô Võ Thu Hiền",
+  "description": "Ứng dụng học từ vựng Tiếng Anh Lớp 4 bộ sách Global Success với Flashcards, Luyện phát âm AI và Bài tập tương tác.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
