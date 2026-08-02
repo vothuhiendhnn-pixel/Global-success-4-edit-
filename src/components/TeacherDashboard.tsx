@@ -267,9 +267,14 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
         {/* Quick Action Buttons */}
         <div className="flex flex-wrap items-center gap-2 z-10">
+          <div className="flex items-center gap-1.5 bg-emerald-800/60 border border-emerald-400/40 px-3 py-1.5 rounded-2xl text-[11px] font-bold text-emerald-100 shadow-2xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping"></span>
+            <span>Tự động lưu tên & tiến trình từ link học sinh</span>
+          </div>
+
           <button
             onClick={() => setIsEditingControls(true)}
-            className="px-4 py-2.5 bg-white text-emerald-800 hover:bg-emerald-50 font-bold text-xs rounded-2xl flex items-center gap-2 shadow-xs transition-all cursor-pointer"
+            className="px-3.5 py-2.5 bg-white text-emerald-800 hover:bg-emerald-50 font-bold text-xs rounded-2xl flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
           >
             <Sliders className="w-4 h-4 text-emerald-600" />
             <span>Cấu Hình Bài Tập</span>
@@ -277,7 +282,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
           <button
             onClick={handleExportCSV}
-            className="px-4 py-2.5 bg-emerald-800/80 hover:bg-emerald-800 text-white border border-emerald-400/30 font-bold text-xs rounded-2xl flex items-center gap-2 transition-all cursor-pointer"
+            className="px-3.5 py-2.5 bg-emerald-800/80 hover:bg-emerald-800 text-white border border-emerald-400/30 font-bold text-xs rounded-2xl flex items-center gap-1.5 transition-all cursor-pointer"
           >
             <Download className="w-4 h-4 text-emerald-200" />
             <span>Xuất Báo Cáo Excel</span>

@@ -11,6 +11,8 @@ interface UnitDetailProps {
   onBack: () => void;
   onToggleMastered: (wordKey: string) => void;
   onRewardStars: (stars: number) => void;
+  onOpenStudentInfoModal?: () => void;
+  showToast?: (msg: string) => void;
 }
 
 export const UnitDetail: React.FC<UnitDetailProps> = ({
@@ -18,7 +20,9 @@ export const UnitDetail: React.FC<UnitDetailProps> = ({
   profile,
   onBack,
   onToggleMastered,
-  onRewardStars
+  onRewardStars,
+  onOpenStudentInfoModal,
+  showToast
 }) => {
   const [activeTab, setActiveTab] = useState<'flashcard' | 'pronounce' | 'practice'>('flashcard');
 
@@ -110,8 +114,12 @@ export const UnitDetail: React.FC<UnitDetailProps> = ({
       {activeTab === 'practice' && (
         <PracticeExercises
           unitNumber={unit.unit}
+          unitTopic={unit.topic}
           words={unit.words}
+          profile={profile}
           onRewardStars={onRewardStars}
+          onOpenStudentInfoModal={onOpenStudentInfoModal}
+          showToast={showToast}
         />
       )}
     </div>

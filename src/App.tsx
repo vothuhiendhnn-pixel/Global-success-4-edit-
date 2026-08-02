@@ -5,7 +5,9 @@ import { UnitList } from './components/UnitList';
 import { UnitDetail } from './components/UnitDetail';
 import { DictionaryView } from './components/DictionaryView';
 import { TeacherDashboard } from './components/TeacherDashboard';
+import { AchievementPortal } from './components/AchievementPortal';
 import { ProfileModal } from './components/ProfileModal';
+import { StudentInfoEntryModal } from './components/StudentInfoEntryModal';
 import { UserProfile, TeacherConfig, StudentRecord } from './types';
 import { UNITS_DATA } from './data/units';
 import { loadProfile, saveProfile, resetProfileData } from './utils/storage';
@@ -16,15 +18,24 @@ import {
   saveStudentsList 
 } from './data/teacherData';
 import { initAudioUnlock, playSoundEffect } from './utils/audio';
+import {
+  syncStudentProgressApi,
+  fetchStudentsApi,
+  saveTeacherConfigApi,
+  rewardStudentApi,
+  updateStudentsApi
+} from './utils/api';
 
 export default function App() {
   const [profile, setProfile] = useState<UserProfile>(loadProfile);
   const [teacherConfig, setTeacherConfig] = useState<TeacherConfig>(loadTeacherConfig);
   const [studentsList, setStudentsList] = useState<StudentRecord[]>(loadStudentsList);
 
-  const [activeTab, setActiveTab] = useState<'home' | 'units' | 'dictionary' | 'teacher'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'units' | 'dictionary' | 'achievements' | 'teacher'>('achievements');
   const [selectedUnitNumber, setSelectedUnitNumber] = useState<number | null>(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isStudentInfoModalOpen, setIsStudentInfoModalOpen] = useState(false);
+  const [pendingUnitNumber, setPendingUnitNumber] = useState<number | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Initialize Audio unlock on user touch/click
@@ -32,20 +43,52 @@ export default function App() {
     initAudioUnlock();
   }, []);
 
-  // Save profile on change
+  // Sync student profile with central server database whenever profile updates
   useEffect(() => {
     saveProfile(profile);
-  }, [profile]);
 
-  // Save teacher config on change
+    // Call central server API to save student name and progress for Teacher Dashboard
+    syncStudentProgressApi(profile).then((data) => {
+      if (data) {
+        if (data.studentId && profile.id !== data.studentId) {
+          setProfile((prev) => ({ ...prev, id: data.studentId }));
+        }
+        if (data.students && Array.isArray(data.students)) {
+          setStudentsList(data.students);
+        }
+        if (data.config) {
+          setTeacherConfig(data.config);
+        }
+      }
+    });
+  }, [profile.name, profile.className, profile.avatar, profile.stars, profile.masteredWords, profile.completedUnits]);
+
+  // Save teacher config locally & on server
   useEffect(() => {
     saveTeacherConfig(teacherConfig);
+    saveTeacherConfigApi(teacherConfig);
   }, [teacherConfig]);
 
-  // Save students list on change
+  // Save students list locally & on server
   useEffect(() => {
     saveStudentsList(studentsList);
   }, [studentsList]);
+
+  // Periodic refresh when on Teacher tab or app load
+  useEffect(() => {
+    const loadFreshData = () => {
+      fetchStudentsApi().then((res) => {
+        if (res) {
+          if (res.students) setStudentsList(res.students);
+          if (res.config) setTeacherConfig(res.config);
+        }
+      });
+    };
+
+    loadFreshData();
+    const interval = setInterval(loadFreshData, 6000); // Poll every 6 seconds for live student progress
+    return () => clearInterval(interval);
+  }, []);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -114,7 +157,30 @@ export default function App() {
       ...prev,
       lastAccessedUnit: unitNumber
     }));
-    setSelectedUnitNumber(unitNumber);
+
+    // If profile name is still default placeholder or name/class unconfirmed, open Student Info Modal first
+    if (!profile.name || profile.name.includes("Nguyễn Văn A") || !profile.className) {
+      setPendingUnitNumber(unitNumber);
+      setIsStudentInfoModalOpen(true);
+    } else {
+      setSelectedUnitNumber(unitNumber);
+    }
+  };
+
+  const handleSaveStudentInfoAndContinue = (name: string, className: string) => {
+    setProfile((prev) => ({
+      ...prev,
+      name,
+      className
+    }));
+
+    setIsStudentInfoModalOpen(false);
+    showToast(`Đã lưu thông tin: ${name} (${className})! 🎉`);
+
+    if (pendingUnitNumber !== null) {
+      setSelectedUnitNumber(pendingUnitNumber);
+      setPendingUnitNumber(null);
+    }
   };
 
   const handleResetData = () => {
@@ -126,7 +192,10 @@ export default function App() {
   };
 
   const handleRewardStudentFromTeacher = (studentId: string, starsCount: number, note: string) => {
-    if (profile.name.includes("Nguyễn Văn A")) {
+    rewardStudentApi(studentId, starsCount, note).then((updatedList) => {
+      if (updatedList) setStudentsList(updatedList);
+    });
+    if (profile.id === studentId || profile.name.includes("Nguyễn Văn A")) {
       setProfile(prev => ({
         ...prev,
         stars: prev.stars + starsCount
@@ -173,6 +242,8 @@ export default function App() {
             onBack={() => setSelectedUnitNumber(null)}
             onToggleMastered={handleToggleMastered}
             onRewardStars={handleRewardStars}
+            onOpenStudentInfoModal={() => setIsStudentInfoModalOpen(true)}
+            showToast={showToast}
           />
         ) : (
           /* Main Views */
@@ -194,6 +265,13 @@ export default function App() {
               <UnitList
                 profile={profile}
                 onSelectUnit={handleSelectUnit}
+              />
+            )}
+
+            {activeTab === 'achievements' && (
+              <AchievementPortal
+                profile={profile}
+                showToast={showToast}
               />
             )}
 
@@ -228,6 +306,22 @@ export default function App() {
           showToast('Đã lưu thông tin hồ sơ!');
         }}
         onResetData={handleResetData}
+      />
+
+      {/* Mandatory / Entry Student Info Modal */}
+      <StudentInfoEntryModal
+        isOpen={isStudentInfoModalOpen}
+        profile={profile}
+        targetUnitTitle={
+          pendingUnitNumber
+            ? `Unit ${pendingUnitNumber}: ${UNITS_DATA.find((u) => u.unit === pendingUnitNumber)?.topic || ''}`
+            : undefined
+        }
+        onSaveAndContinue={handleSaveStudentInfoAndContinue}
+        onCancel={() => {
+          setIsStudentInfoModalOpen(false);
+          setPendingUnitNumber(null);
+        }}
       />
     </div>
   );

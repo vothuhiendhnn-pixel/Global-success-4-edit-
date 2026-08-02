@@ -5,8 +5,8 @@ import { AVATARS } from '../data/units';
 
 interface HeaderProps {
   profile: UserProfile;
-  activeTab: 'home' | 'units' | 'dictionary' | 'teacher';
-  onSelectTab: (tab: 'home' | 'units' | 'dictionary' | 'teacher') => void;
+  activeTab: 'home' | 'units' | 'dictionary' | 'achievements' | 'teacher';
+  onSelectTab: (tab: 'home' | 'units' | 'dictionary' | 'achievements' | 'teacher') => void;
   onOpenProfile: () => void;
   onToggleSound: () => void;
 }
@@ -89,6 +89,18 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Sparkles className="w-4 h-4" />
             <span>Trang chủ</span>
+          </button>
+
+          <button
+            onClick={() => onSelectTab('achievements')}
+            className={`flex items-center gap-2 py-3 px-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'achievements'
+                ? 'border-amber-500 text-amber-700 font-black bg-amber-50/70 rounded-t-lg'
+                : 'border-transparent text-amber-800/80 hover:text-amber-900'
+            }`}
+          >
+            <span className="text-base">🏆</span>
+            <span>Bảng Vàng 成績</span>
           </button>
 
           <button

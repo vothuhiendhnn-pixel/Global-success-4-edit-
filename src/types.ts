@@ -13,6 +13,7 @@ export interface Unit {
 }
 
 export interface UserProfile {
+  id?: string;
   name: string;
   className: string;
   avatar: string;
@@ -21,6 +22,8 @@ export interface UserProfile {
   completedUnits: number[]; // Unit numbers completed
   lastAccessedUnit: number;
   dailyTasksCompleted: { [dateKey: string]: string[] }; // task IDs completed on date
+  pronunciationScores?: { [wordKey: string]: number };
+  quizzesCompletedCount?: number;
   soundEnabled: boolean;
   teacherCommendations?: { id: string; date: string; note: string; starsAwarded: number }[];
 }
@@ -49,6 +52,7 @@ export interface StudentRecord {
   avatar: string;
   stars: number;
   masteredWordsCount: number;
+  masteredWords?: string[];
   unitsCompleted: number[]; // e.g. [1, 2, 3]
   avgPronunciationScore: number; // e.g. 88%
   quizzesCompleted: number;

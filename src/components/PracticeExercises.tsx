@@ -1,22 +1,33 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, XCircle, Award, RotateCcw, ArrowRight, Sparkles, HelpCircle, Shuffle, FileText } from 'lucide-react';
-import { Word, SentenceExercise } from '../types';
+import { CheckCircle2, XCircle, Award, RotateCcw, ArrowRight, Sparkles, HelpCircle, Shuffle, FileText, Send, UserCheck, GraduationCap, SkipForward } from 'lucide-react';
+import { Word, SentenceExercise, UserProfile } from '../types';
 import { SENTENCE_EXERCISES } from '../data/units';
 import { getUnitExtraExercises } from '../data/extraExercises';
 import { playSoundEffect, speakText } from '../utils/audio';
+import { submitToGoogleSheetApi } from '../utils/api';
 
 interface PracticeExercisesProps {
   unitNumber: number;
+  unitTopic?: string;
   words: Word[];
+  profile: UserProfile;
   onRewardStars: (stars: number) => void;
+  onOpenStudentInfoModal?: () => void;
+  showToast?: (msg: string) => void;
 }
 
 export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
   unitNumber,
+  unitTopic,
   words,
-  onRewardStars
+  profile,
+  onRewardStars,
+  onOpenStudentInfoModal,
+  showToast
 }) => {
   const [activeGameMode, setActiveGameMode] = useState<'reorder' | 'fill' | 'quiz' | 'memory'>('reorder');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submittedMode, setSubmittedMode] = useState<{ [mode: string]: boolean }>({});
 
   // QUIZ STATE
   const [quizQuestions, setQuizQuestions] = useState<
@@ -24,7 +35,11 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
   >([]);
   const [quizStep, setQuizStep] = useState(0);
   const [quizSelectedOpt, setQuizSelectedOpt] = useState<number | null>(null);
+  const [quizWrongOpts, setQuizWrongOpts] = useState<number[]>([]);
+  const [quizAttempts, setQuizAttempts] = useState(0);
   const [quizScore, setQuizScore] = useState(0);
+  const [quizWrongScore, setQuizWrongScore] = useState(0);
+  const [quizSkippedScore, setQuizSkippedScore] = useState(0);
   const [quizFinished, setQuizFinished] = useState(false);
 
   // WORD REORDERING STATE
@@ -32,15 +47,22 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
   const [reorderIndex, setReorderIndex] = useState(0);
   const [selectedTokens, setSelectedTokens] = useState<string[]>([]);
   const [availableTokens, setAvailableTokens] = useState<string[]>([]);
-  const [reorderFeedback, setReorderFeedback] = useState<'correct' | 'wrong' | null>(null);
+  const [reorderFeedback, setReorderFeedback] = useState<'correct' | 'wrong' | 'wrong_3times' | null>(null);
+  const [reorderAttempts, setReorderAttempts] = useState(0);
+  const [reorderScore, setReorderScore] = useState(0);
+  const [reorderWrongScore, setReorderWrongScore] = useState(0);
+  const [reorderSkippedScore, setReorderSkippedScore] = useState(0);
   const [reorderFinished, setReorderFinished] = useState(false);
 
   // FILL IN THE BLANKS STATE
   const extraData = getUnitExtraExercises(unitNumber);
   const [fillStep, setFillStep] = useState(0);
   const [fillSelectedWord, setFillSelectedWord] = useState<string | null>(null);
-  const [fillFeedback, setFillFeedback] = useState<'correct' | 'wrong' | null>(null);
+  const [fillFeedback, setFillFeedback] = useState<'correct' | 'wrong' | 'wrong_3times' | null>(null);
+  const [fillAttempts, setFillAttempts] = useState(0);
   const [fillScore, setFillScore] = useState(0);
+  const [fillWrongScore, setFillWrongScore] = useState(0);
+  const [fillSkippedScore, setFillSkippedScore] = useState(0);
   const [fillFinished, setFillFinished] = useState(false);
 
   // MEMORY MATCH STATE
@@ -50,6 +72,89 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
   const [flippedCards, setFlippedCards] = useState<number[]>([]);
   const [memoryMatchesCount, setMemoryMatchesCount] = useState(0);
   const [memoryFinished, setMemoryFinished] = useState(false);
+
+  // Submit exercise result to Google Apps Script Web App URL
+  const handlePerformSubmit = async (customMode?: string) => {
+    const mode = customMode || activeGameMode;
+    setIsSubmitting(true);
+
+    const title = unitTopic ? `Unit ${unitNumber}: ${unitTopic}` : `Unit ${unitNumber}`;
+    let scoreStr = '0/0';
+    let correctCount: string | number = 0;
+    let skippedCount = 0;
+    let wrongCount = 0;
+
+    if (mode === 'quiz') {
+      const total = quizQuestions.length || 1;
+      scoreStr = `${quizScore}/${total} (Đúng: ${quizScore}, Sai: ${quizWrongScore}, Bỏ qua: ${quizSkippedScore})`;
+      correctCount = quizScore;
+      skippedCount = quizSkippedScore;
+      wrongCount = quizWrongScore;
+    } else if (mode === 'reorder') {
+      const total = reorderSentences.length || 1;
+      scoreStr = `${reorderScore}/${total} (Đúng: ${reorderScore}, Sai: ${reorderWrongScore}, Bỏ qua: ${reorderSkippedScore})`;
+      correctCount = reorderScore;
+      skippedCount = reorderSkippedScore;
+      wrongCount = reorderWrongScore;
+    } else if (mode === 'fill') {
+      const total = extraData?.fill_in_blanks?.questions?.length || 1;
+      scoreStr = `${fillScore}/${total} (Đúng: ${fillScore}, Sai: ${fillWrongScore}, Bỏ qua: ${fillSkippedScore})`;
+      correctCount = fillScore;
+      skippedCount = fillSkippedScore;
+      wrongCount = fillWrongScore;
+    } else if (mode === 'memory') {
+      const total = memoryCards.length / 2 || 1;
+      scoreStr = `${memoryMatchesCount}/${total}`;
+      correctCount = memoryMatchesCount;
+    }
+
+    const payload = {
+      studentName: profile.name || 'Học sinh',
+      studentClass: profile.className || 'Lớp 4A',
+      unitTitle: title,
+      score: scoreStr,
+      correctAnswers: correctCount,
+      skippedAnswers: skippedCount,
+      wrongAnswers: wrongCount
+    };
+
+    await submitToGoogleSheetApi(payload);
+
+    setIsSubmitting(false);
+    setSubmittedMode((prev) => ({ ...prev, [mode]: true }));
+
+    const msg = `🚀 Đã nộp bài tập của ${payload.studentName} (${payload.studentClass}) về Google Sheet giáo viên thành công!`;
+    if (showToast) {
+      showToast(msg);
+    } else {
+      alert(msg);
+    }
+  };
+
+  // Auto submit when game modes finish
+  useEffect(() => {
+    if (quizFinished && !submittedMode['quiz']) {
+      handlePerformSubmit('quiz');
+    }
+  }, [quizFinished]);
+
+  useEffect(() => {
+    if (reorderFinished && !submittedMode['reorder']) {
+      handlePerformSubmit('reorder');
+    }
+  }, [reorderFinished]);
+
+  useEffect(() => {
+    if (fillFinished && !submittedMode['fill']) {
+      handlePerformSubmit('fill');
+    }
+  }, [fillFinished]);
+
+  useEffect(() => {
+    if (memoryFinished && !submittedMode['memory']) {
+      handlePerformSubmit('memory');
+    }
+  }, [memoryFinished]);
 
   // Initialize Games
   useEffect(() => {
@@ -75,7 +180,11 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
     setQuizQuestions(questions);
     setQuizStep(0);
     setQuizSelectedOpt(null);
+    setQuizWrongOpts([]);
+    setQuizAttempts(0);
     setQuizScore(0);
+    setQuizWrongScore(0);
+    setQuizSkippedScore(0);
     setQuizFinished(false);
   };
 
@@ -99,6 +208,10 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
     setReorderSentences(pool);
     setReorderIndex(0);
     setReorderFeedback(null);
+    setReorderAttempts(0);
+    setReorderScore(0);
+    setReorderWrongScore(0);
+    setReorderSkippedScore(0);
     setReorderFinished(false);
 
     if (pool.length > 0) {
@@ -111,7 +224,10 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
     setFillStep(0);
     setFillSelectedWord(null);
     setFillFeedback(null);
+    setFillAttempts(0);
     setFillScore(0);
+    setFillWrongScore(0);
+    setFillSkippedScore(0);
     setFillFinished(false);
   };
 
@@ -147,30 +263,72 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
 
   // HANDLERS FOR QUIZ
   const handleAnswerQuiz = (optIdx: number) => {
-    if (quizSelectedOpt !== null) return;
-    setQuizSelectedOpt(optIdx);
+    if (quizSelectedOpt !== null || quizWrongOpts.includes(optIdx)) return;
 
     const currentQ = quizQuestions[quizStep];
     const isCorrect = optIdx === currentQ.correctIdx;
 
     if (isCorrect) {
       playSoundEffect('correct');
+      setQuizSelectedOpt(optIdx);
       setQuizScore((prev) => prev + 1);
+      speakText(currentQ.word.w);
+
+      setTimeout(() => {
+        if (quizStep + 1 < quizQuestions.length) {
+          setQuizStep((prev) => prev + 1);
+          setQuizSelectedOpt(null);
+          setQuizWrongOpts([]);
+          setQuizAttempts(0);
+        } else {
+          setQuizFinished(true);
+          const finalScore = quizScore + 1;
+          const starReward = finalScore >= Math.ceil(quizQuestions.length * 0.8) ? 15 : 5;
+          onRewardStars(starReward);
+        }
+      }, 1200);
     } else {
       playSoundEffect('wrong');
-    }
+      const nextAttempts = quizAttempts + 1;
+      setQuizAttempts(nextAttempts);
+      setQuizWrongOpts((prev) => [...prev, optIdx]);
 
-    setTimeout(() => {
-      if (quizStep + 1 < quizQuestions.length) {
-        setQuizStep((prev) => prev + 1);
-        setQuizSelectedOpt(null);
-      } else {
-        setQuizFinished(true);
-        const finalScore = quizScore + (isCorrect ? 1 : 0);
-        const starReward = finalScore >= Math.ceil(quizQuestions.length * 0.8) ? 15 : 5;
-        onRewardStars(starReward);
+      if (nextAttempts >= 3) {
+        setQuizWrongScore((prev) => prev + 1);
+        // Show correct answer and skip to next question
+        setQuizSelectedOpt(currentQ.correctIdx);
+        speakText(currentQ.word.w);
+
+        setTimeout(() => {
+          if (quizStep + 1 < quizQuestions.length) {
+            setQuizStep((prev) => prev + 1);
+            setQuizSelectedOpt(null);
+            setQuizWrongOpts([]);
+            setQuizAttempts(0);
+          } else {
+            setQuizFinished(true);
+            const starReward = quizScore >= Math.ceil(quizQuestions.length * 0.8) ? 15 : 5;
+            onRewardStars(starReward);
+          }
+        }, 2800);
       }
-    }, 1200);
+    }
+  };
+
+  const handleSkipQuiz = () => {
+    playSoundEffect('flip');
+    setQuizSkippedScore((prev) => prev + 1);
+
+    if (quizStep + 1 < quizQuestions.length) {
+      setQuizStep((prev) => prev + 1);
+      setQuizSelectedOpt(null);
+      setQuizWrongOpts([]);
+      setQuizAttempts(0);
+    } else {
+      setQuizFinished(true);
+      const starReward = quizScore >= Math.ceil(quizQuestions.length * 0.8) ? 15 : 5;
+      onRewardStars(starReward);
+    }
   };
 
   // HANDLERS FOR REORDERING
@@ -198,6 +356,7 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
     if (userSentence === correctSentence) {
       playSoundEffect('correct');
       setReorderFeedback('correct');
+      setReorderScore((prev) => prev + 1);
       speakText(correctSentence);
 
       setTimeout(() => {
@@ -207,6 +366,7 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
           setAvailableTokens([...reorderSentences[nextIdx].scrambledTokens]);
           setSelectedTokens([]);
           setReorderFeedback(null);
+          setReorderAttempts(0);
         } else {
           setReorderFinished(true);
           onRewardStars(20);
@@ -214,8 +374,51 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
       }, 1400);
     } else {
       playSoundEffect('wrong');
-      setReorderFeedback('wrong');
-      setTimeout(() => setReorderFeedback(null), 1200);
+      const nextAttempts = reorderAttempts + 1;
+      setReorderAttempts(nextAttempts);
+
+      if (nextAttempts < 3) {
+        setReorderFeedback('wrong');
+        setTimeout(() => setReorderFeedback(null), 1200);
+      } else {
+        // 3 failed attempts: reveal correct order, speak, auto-skip
+        setReorderWrongScore((prev) => prev + 1);
+        setReorderFeedback('wrong_3times');
+        setSelectedTokens([...currentSen.englishTokens]);
+        setAvailableTokens([]);
+        speakText(correctSentence);
+
+        setTimeout(() => {
+          if (reorderIndex + 1 < reorderSentences.length) {
+            const nextIdx = reorderIndex + 1;
+            setReorderIndex(nextIdx);
+            setAvailableTokens([...reorderSentences[nextIdx].scrambledTokens]);
+            setSelectedTokens([]);
+            setReorderFeedback(null);
+            setReorderAttempts(0);
+          } else {
+            setReorderFinished(true);
+            onRewardStars(20);
+          }
+        }, 3000);
+      }
+    }
+  };
+
+  const handleSkipReorder = () => {
+    playSoundEffect('flip');
+    setReorderSkippedScore((prev) => prev + 1);
+
+    if (reorderIndex + 1 < reorderSentences.length) {
+      const nextIdx = reorderIndex + 1;
+      setReorderIndex(nextIdx);
+      setAvailableTokens([...reorderSentences[nextIdx].scrambledTokens]);
+      setSelectedTokens([]);
+      setReorderFeedback(null);
+      setReorderAttempts(0);
+    } else {
+      setReorderFinished(true);
+      onRewardStars(15);
     }
   };
 
@@ -232,22 +435,67 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
       setFillFeedback('correct');
       setFillScore((prev) => prev + 1);
       speakText(q.sentence.replace('_______', word));
+
+      setTimeout(() => {
+        if (fillStep + 1 < extraData.fill_in_blanks.questions.length) {
+          setFillStep((prev) => prev + 1);
+          setFillSelectedWord(null);
+          setFillFeedback(null);
+          setFillAttempts(0);
+        } else {
+          setFillFinished(true);
+          const starReward = fillScore + 1 >= 8 ? 20 : 10;
+          onRewardStars(starReward);
+        }
+      }, 1400);
     } else {
       playSoundEffect('wrong');
-      setFillFeedback('wrong');
-    }
+      const nextAttempts = fillAttempts + 1;
+      setFillAttempts(nextAttempts);
 
-    setTimeout(() => {
-      if (fillStep + 1 < extraData.fill_in_blanks.questions.length) {
-        setFillStep((prev) => prev + 1);
-        setFillSelectedWord(null);
-        setFillFeedback(null);
+      if (nextAttempts < 3) {
+        setFillFeedback('wrong');
+        setTimeout(() => {
+          setFillFeedback(null);
+          setFillSelectedWord(null);
+        }, 1200);
       } else {
-        setFillFinished(true);
-        const starReward = fillScore + (isCorrect ? 1 : 0) >= 8 ? 20 : 10;
-        onRewardStars(starReward);
+        // 3 failed attempts: reveal correct answer and skip
+        setFillWrongScore((prev) => prev + 1);
+        setFillFeedback('wrong_3times');
+        setFillSelectedWord(q.correct_answer);
+        speakText(q.sentence.replace('_______', q.correct_answer));
+
+        setTimeout(() => {
+          if (fillStep + 1 < extraData.fill_in_blanks.questions.length) {
+            setFillStep((prev) => prev + 1);
+            setFillSelectedWord(null);
+            setFillFeedback(null);
+            setFillAttempts(0);
+          } else {
+            setFillFinished(true);
+            const starReward = fillScore >= 8 ? 20 : 10;
+            onRewardStars(starReward);
+          }
+        }, 2800);
       }
-    }, 1400);
+    }
+  };
+
+  const handleSkipFill = () => {
+    playSoundEffect('flip');
+    setFillSkippedScore((prev) => prev + 1);
+
+    if (extraData && fillStep + 1 < extraData.fill_in_blanks.questions.length) {
+      setFillStep((prev) => prev + 1);
+      setFillSelectedWord(null);
+      setFillFeedback(null);
+      setFillAttempts(0);
+    } else {
+      setFillFinished(true);
+      const starReward = fillScore >= 8 ? 20 : 10;
+      onRewardStars(starReward);
+    }
   };
 
   // HANDLERS FOR MEMORY GAME
@@ -303,6 +551,52 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
+      {/* Student Profile & Submission Action Bar */}
+      <div className="bg-white p-4 rounded-3xl border border-emerald-100 shadow-xs flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+            <GraduationCap className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-black text-slate-900">{profile.name || 'Học sinh'}</span>
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                {profile.className || 'Lớp 4A'}
+              </span>
+            </div>
+            <p className="text-[11px] font-medium text-slate-500">
+              Điểm bài tập sẽ gửi về Google Sheets
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {onOpenStudentInfoModal && (
+            <button
+              onClick={onOpenStudentInfoModal}
+              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-2xl transition-all cursor-pointer flex items-center gap-1"
+              title="Đổi Họ tên và Lớp"
+            >
+              <UserCheck className="w-3.5 h-3.5 text-slate-600" />
+              <span>Sửa thông tin</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => handlePerformSubmit(activeGameMode)}
+            disabled={isSubmitting}
+            className={`px-4 py-2 text-white font-extrabold text-xs rounded-2xl transition-all flex items-center gap-1.5 shadow-sm cursor-pointer ${
+              submittedMode[activeGameMode]
+                ? 'bg-emerald-700 hover:bg-emerald-800'
+                : 'bg-emerald-600 hover:bg-emerald-700 active:scale-95'
+            }`}
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span>{isSubmitting ? 'Đang gửi...' : submittedMode[activeGameMode] ? 'Đã Nộp Bài ✓' : 'Nộp Bài'}</span>
+          </button>
+        </div>
+      </div>
+
       {/* Game Mode Selector Tabs */}
       <div className="grid grid-cols-2 sm:grid-cols-4 bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/80 gap-1.5 font-bold text-xs text-slate-600">
         <button
@@ -452,14 +746,35 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
                   </div>
                 )}
                 {reorderFeedback === 'wrong' && (
-                  <div className="p-3.5 bg-rose-100 border border-rose-300 text-rose-900 rounded-2xl font-bold text-xs sm:text-sm text-center animate-fade-in shadow-xs flex items-center justify-center gap-2">
-                    <XCircle className="w-5 h-5 text-rose-600" />
-                    <span>Chưa chính xác! Vui lòng chạm vào các từ để sắp xếp lại nhé. 💪</span>
+                  <div className="p-3.5 bg-amber-100 border border-amber-300 text-amber-900 rounded-2xl font-bold text-xs sm:text-sm text-center animate-fade-in shadow-xs flex items-center justify-center gap-2">
+                    <XCircle className="w-5 h-5 text-amber-600" />
+                    <span>Chưa chính xác (Lần {reorderAttempts}/3)! Em thử xếp lại xem sao nhé. 💪</span>
+                  </div>
+                )}
+                {reorderFeedback === 'wrong_3times' && (
+                  <div className="p-4 bg-rose-100 border border-rose-300 text-rose-900 rounded-2xl font-bold text-xs sm:text-sm text-center animate-fade-in shadow-xs space-y-1">
+                    <div className="flex items-center justify-center gap-2 text-rose-800 text-sm sm:text-base font-black">
+                      <XCircle className="w-5 h-5 text-rose-600" />
+                      <span>Đã thử 3 lần chưa đúng! Bỏ qua và chuyển sang câu tiếp theo...</span>
+                    </div>
+                    <p className="text-xs text-rose-700 font-bold">
+                      Đáp án đúng là: <strong className="text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-md">"{reorderSentences[reorderIndex].englishTokens.join(' ')}"</strong> 🔊
+                    </p>
                   </div>
                 )}
 
-                {/* Action buttons */}
-                <div className="flex gap-2">
+                {/* Action buttons with Skip option */}
+                <div className="flex gap-2 pt-2">
+                  <button
+                    onClick={handleSkipReorder}
+                    disabled={reorderFeedback !== null}
+                    className="py-3 px-4 bg-slate-100 hover:bg-amber-50 hover:text-amber-800 text-slate-700 font-bold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-slate-200 active:scale-95"
+                    title="Bỏ qua câu hỏi này"
+                  >
+                    <SkipForward className="w-4 h-4 text-amber-600" />
+                    <span>Bỏ qua</span>
+                  </button>
+
                   {selectedTokens.length > 0 && reorderFeedback === null && (
                     <button
                       onClick={() => {
@@ -471,6 +786,7 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
                       Xóa làm lại
                     </button>
                   )}
+
                   <button
                     disabled={selectedTokens.length === 0 || reorderFeedback !== null}
                     onClick={handleCheckReorder}
@@ -489,8 +805,25 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
               </div>
               <h3 className="text-2xl font-black text-slate-900">Hoàn thành Sắp xếp câu!</h3>
               <p className="text-sm font-semibold text-slate-600">
-                Bạn đã xếp chính xác tất cả {reorderSentences.length} câu tiếng Anh của bài này.
+                Tổng kết bài làm Sắp xếp câu ({reorderSentences.length} câu)
               </p>
+
+              {/* Detailed Breakdown [Đúng] - [Sai] - [Đã bỏ qua] */}
+              <div className="grid grid-cols-3 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 max-w-sm mx-auto my-2 text-center shadow-2xs">
+                <div className="p-2.5 bg-emerald-50/90 rounded-xl border border-emerald-200">
+                  <div className="text-[11px] font-bold text-emerald-700">✅ Đúng</div>
+                  <div className="text-xl font-black text-emerald-800 pt-0.5">{reorderScore}</div>
+                </div>
+                <div className="p-2.5 bg-rose-50/90 rounded-xl border border-rose-200">
+                  <div className="text-[11px] font-bold text-rose-700">❌ Sai</div>
+                  <div className="text-xl font-black text-rose-800 pt-0.5">{reorderWrongScore}</div>
+                </div>
+                <div className="p-2.5 bg-amber-50/90 rounded-xl border border-amber-200">
+                  <div className="text-[11px] font-bold text-amber-700">⏭️ Đã bỏ qua</div>
+                  <div className="text-xl font-black text-amber-800 pt-0.5">{reorderSkippedScore}</div>
+                </div>
+              </div>
+
               <div className="inline-block bg-amber-50 border border-amber-200 px-4 py-2 rounded-2xl text-amber-800 font-bold text-sm">
                 Thưởng tích lũy: ⭐ +20 Sao!
               </div>
@@ -517,9 +850,15 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
               <>
                 <div className="flex justify-between items-center text-xs font-bold text-slate-500 pb-3 border-b border-slate-100">
                   <span>Câu {fillStep + 1} / {extraData.fill_in_blanks.questions.length}</span>
-                  <span className="text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
-                    Điểm: {fillScore}
-                  </span>
+                  <button
+                    onClick={handleSkipFill}
+                    disabled={fillFeedback !== null}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-amber-50 hover:text-amber-800 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1 border border-slate-200 active:scale-95"
+                    title="Bỏ qua câu hỏi này"
+                  >
+                    <SkipForward className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Bỏ qua</span>
+                  </button>
                 </div>
 
                 {/* Word Bank section */}
@@ -592,8 +931,14 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
                   </div>
                 )}
                 {fillFeedback === 'wrong' && (
-                  <div className="p-3 bg-rose-100 text-rose-800 rounded-2xl font-bold text-xs text-center animate-fade-in">
-                    Chưa đúng. Đáp án chuẩn là: <strong>{extraData.fill_in_blanks.questions[fillStep].correct_answer}</strong>
+                  <div className="p-3 bg-amber-100 text-amber-900 rounded-2xl font-bold text-xs text-center animate-fade-in border border-amber-300">
+                    Chưa đúng (Lần {fillAttempts}/3). Em hãy thử chọn lại từ khác nhé! 💪
+                  </div>
+                )}
+                {fillFeedback === 'wrong_3times' && (
+                  <div className="p-3.5 bg-rose-100 text-rose-900 rounded-2xl font-bold text-xs text-center animate-fade-in border border-rose-300 space-y-1">
+                    <p className="font-black text-rose-800">Đã chọn sai 3 lần! Bỏ qua câu hỏi này...</p>
+                    <p className="text-xs text-rose-700">Đáp án chuẩn là: <strong className="text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md">"{extraData.fill_in_blanks.questions[fillStep].correct_answer}"</strong> 🔊</p>
                   </div>
                 )}
               </>
@@ -604,8 +949,25 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
                 </div>
                 <h3 className="text-2xl font-black text-slate-900">Hoàn thành bài Điền từ!</h3>
                 <p className="text-sm font-semibold text-slate-600">
-                  Bạn trả lời đúng <span className="text-emerald-600 font-bold">{fillScore}</span> / {extraData.fill_in_blanks.questions.length} câu.
+                  Tổng kết bài làm Điền vào chỗ trống ({extraData.fill_in_blanks.questions.length} câu)
                 </p>
+
+                {/* Detailed Breakdown [Đúng] - [Sai] - [Đã bỏ qua] */}
+                <div className="grid grid-cols-3 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 max-w-sm mx-auto my-2 text-center shadow-2xs">
+                  <div className="p-2.5 bg-emerald-50/90 rounded-xl border border-emerald-200">
+                    <div className="text-[11px] font-bold text-emerald-700">✅ Đúng</div>
+                    <div className="text-xl font-black text-emerald-800 pt-0.5">{fillScore}</div>
+                  </div>
+                  <div className="p-2.5 bg-rose-50/90 rounded-xl border border-rose-200">
+                    <div className="text-[11px] font-bold text-rose-700">❌ Sai</div>
+                    <div className="text-xl font-black text-rose-800 pt-0.5">{fillWrongScore}</div>
+                  </div>
+                  <div className="p-2.5 bg-amber-50/90 rounded-xl border border-amber-200">
+                    <div className="text-[11px] font-bold text-amber-700">⏭️ Đã bỏ qua</div>
+                    <div className="text-xl font-black text-amber-800 pt-0.5">{fillSkippedScore}</div>
+                  </div>
+                </div>
+
                 <div className="inline-block bg-amber-50 border border-amber-200 px-4 py-2 rounded-2xl text-amber-800 font-bold text-sm">
                   Thưởng tích lũy: ⭐ +20 Sao!
                 </div>
@@ -639,9 +1001,15 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
               <>
                 <div className="flex items-center justify-between text-xs font-bold text-slate-500 pb-3 border-b border-slate-100">
                   <span>Câu hỏi {quizStep + 1} / {quizQuestions.length}</span>
-                  <span className="text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-1 rounded-full">
-                    Điểm: {quizScore}
-                  </span>
+                  <button
+                    onClick={handleSkipQuiz}
+                    disabled={quizSelectedOpt !== null}
+                    className="px-3.5 py-1.5 bg-slate-100 hover:bg-amber-50 hover:text-amber-800 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border border-slate-200 active:scale-95"
+                    title="Bỏ qua câu hỏi này"
+                  >
+                    <SkipForward className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Bỏ qua</span>
+                  </button>
                 </div>
 
                 <div className="text-center space-y-2 py-3">
@@ -660,20 +1028,23 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
                   {quizQuestions[quizStep].options.map((opt, idx) => {
                     const isSelected = quizSelectedOpt === idx;
                     const isCorrect = idx === quizQuestions[quizStep].correctIdx;
+                    const isWrongChosen = quizWrongOpts.includes(idx);
 
                     let btnStyle = "bg-slate-50 border-slate-200 text-slate-800 hover:bg-emerald-50 hover:border-emerald-300";
                     if (quizSelectedOpt !== null) {
                       if (isCorrect) {
-                        btnStyle = "bg-emerald-600 border-emerald-600 text-white font-black";
+                        btnStyle = "bg-emerald-600 border-emerald-600 text-white font-black shadow-sm ring-2 ring-emerald-300";
                       } else if (isSelected) {
                         btnStyle = "bg-rose-500 border-rose-500 text-white font-black";
                       }
+                    } else if (isWrongChosen) {
+                      btnStyle = "bg-rose-50 border-rose-300 text-rose-800 line-through opacity-70 cursor-not-allowed";
                     }
 
                     return (
                       <button
                         key={idx}
-                        disabled={quizSelectedOpt !== null}
+                        disabled={quizSelectedOpt !== null || isWrongChosen}
                         onClick={() => handleAnswerQuiz(idx)}
                         className={`p-4 rounded-2xl border font-bold text-sm transition-all text-left flex items-center justify-between cursor-pointer ${btnStyle}`}
                       >
@@ -684,10 +1055,32 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
                         {quizSelectedOpt !== null && isSelected && !isCorrect && (
                           <XCircle className="w-5 h-5 text-white" />
                         )}
+                        {quizSelectedOpt === null && isWrongChosen && (
+                          <XCircle className="w-5 h-5 text-rose-500" />
+                        )}
                       </button>
                     );
                   })}
                 </div>
+
+                {quizAttempts > 0 && quizAttempts < 3 && quizSelectedOpt === null && (
+                  <div className="p-3 bg-amber-100 border border-amber-300 text-amber-900 rounded-2xl font-bold text-xs text-center animate-fade-in flex items-center justify-center gap-2">
+                    <XCircle className="w-4 h-4 text-amber-600" />
+                    <span>Chưa chính xác (Lần {quizAttempts}/3). Em hãy chọn phương án khác xem sao nhé! 💪</span>
+                  </div>
+                )}
+
+                {quizAttempts >= 3 && (
+                  <div className="p-4 bg-rose-100 border border-rose-300 text-rose-900 rounded-2xl font-bold text-xs sm:text-sm text-center animate-fade-in shadow-xs space-y-1">
+                    <div className="flex items-center justify-center gap-2 font-black text-rose-800 text-sm sm:text-base">
+                      <XCircle className="w-5 h-5 text-rose-600" />
+                      <span>Đã thử 3 lần chưa đúng! Bỏ qua và chuyển sang câu tiếp theo...</span>
+                    </div>
+                    <p className="text-xs text-rose-700 font-bold">
+                      Đáp án đúng là: <strong className="text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-md">"{quizQuestions[quizStep].options[quizQuestions[quizStep].correctIdx]}"</strong> 🔊
+                    </p>
+                  </div>
+                )}
               </>
             )
           ) : (
@@ -697,8 +1090,25 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
               </div>
               <h3 className="text-2xl font-black text-slate-900">Hoàn thành Trắc nghiệm!</h3>
               <p className="text-sm font-semibold text-slate-600">
-                Bạn trả lời đúng <span className="text-emerald-600 font-bold">{quizScore}</span> / {quizQuestions.length} câu.
+                Tổng kết bài làm Trắc nghiệm ({quizQuestions.length} câu)
               </p>
+
+              {/* Detailed Breakdown [Đúng] - [Sai] - [Đã bỏ qua] */}
+              <div className="grid grid-cols-3 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 max-w-sm mx-auto my-2 text-center shadow-2xs">
+                <div className="p-2.5 bg-emerald-50/90 rounded-xl border border-emerald-200">
+                  <div className="text-[11px] font-bold text-emerald-700">✅ Đúng</div>
+                  <div className="text-xl font-black text-emerald-800 pt-0.5">{quizScore}</div>
+                </div>
+                <div className="p-2.5 bg-rose-50/90 rounded-xl border border-rose-200">
+                  <div className="text-[11px] font-bold text-rose-700">❌ Sai</div>
+                  <div className="text-xl font-black text-rose-800 pt-0.5">{quizWrongScore}</div>
+                </div>
+                <div className="p-2.5 bg-amber-50/90 rounded-xl border border-amber-200">
+                  <div className="text-[11px] font-bold text-amber-700">⏭️ Đã bỏ qua</div>
+                  <div className="text-xl font-black text-amber-800 pt-0.5">{quizSkippedScore}</div>
+                </div>
+              </div>
+
               <div className="inline-block bg-amber-50 border border-amber-200 px-4 py-2 rounded-2xl text-amber-800 font-bold text-sm">
                 Thưởng tích lũy: ⭐ +15 Sao!
               </div>
