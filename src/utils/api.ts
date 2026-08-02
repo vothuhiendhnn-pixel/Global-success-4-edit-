@@ -71,49 +71,56 @@ export async function updateStudentsApi(students: StudentRecord[]): Promise<bool
   }
 }
 
+export const DEFAULT_GOOGLE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw4UVH6PyH58NDPZkWYXuGVuOuuq9mO-QCT48lqJLkkCvcPTFZbEcEnsixiXZ76Hq8Gqw/exec";
+
 export interface GoogleSheetSubmissionPayload {
   studentName: string;
-  studentClass: string;
+  studentClass?: string;
   unitTitle: string;
   score: string | number;
-  correctAnswers: string | number;
+  correctAnswers?: string | number;
   skippedAnswers?: string | number;
   wrongAnswers?: string | number;
+  apiUrl?: string;
 }
 
 export async function submitToGoogleSheetApi(payload: GoogleSheetSubmissionPayload): Promise<boolean> {
-  const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxG-0FzIwJK4wwwdKjPjpST2OuCsqW8JMBBvAxQS3tVrnE49iJABHxW7yi3t_J2U38o/exec';
+  const targetUrl = payload.apiUrl || DEFAULT_GOOGLE_APPS_SCRIPT_URL;
+
+  // Format timestamp: YYYY-MM-DD HH:mm:ss
+  const now = new Date();
+  const pad = (n: number) => (n < 10 ? '0' + n : n.toString());
+  const formattedTime = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+  // Format student name with class if available
+  const fullName = payload.studentClass 
+    ? `${payload.studentName} (${payload.studentClass})`
+    : payload.studentName;
+
+  // Build requested exact JSON payload
   const jsonBody = JSON.stringify({
-    studentName: payload.studentName,
-    studentClass: payload.studentClass,
-    unitTitle: payload.unitTitle,
-    score: payload.score,
+    time: formattedTime,
+    name: fullName,
+    units: payload.unitTitle,
+    score: typeof payload.score === 'number' ? `${payload.score}` : payload.score,
+    // Extra fields if script accepts them
     correctAnswers: payload.correctAnswers,
     skippedAnswers: payload.skippedAnswers ?? 0,
     wrongAnswers: payload.wrongAnswers ?? 0
   });
 
   try {
-    // Standard POST fetch
-    await fetch(GOOGLE_SCRIPT_URL, {
+    // Background async POST request
+    fetch(targetUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: jsonBody,
       mode: 'no-cors'
-    });
+    }).catch((e) => console.warn('Background submission note:', e));
+
     return true;
   } catch (err) {
-    console.warn('Google Script fetch error, retrying without no-cors mode:', err);
-    try {
-      await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: jsonBody
-      });
-      return true;
-    } catch (err2) {
-      console.error('Failed to submit to Google Script:', err2);
-      return false;
-    }
+    console.warn('Background Google Sheet fetch error:', err);
+    return false;
   }
 }

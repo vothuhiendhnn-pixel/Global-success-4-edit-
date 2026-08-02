@@ -1,12 +1,12 @@
 import React from 'react';
-import { Sparkles, BookOpen, Search, User, Volume2, VolumeX, ShieldCheck, GraduationCap } from 'lucide-react';
+import { Sparkles, BookOpen, Search, Volume2, VolumeX } from 'lucide-react';
 import { UserProfile } from '../types';
 import { AVATARS } from '../data/units';
 
 interface HeaderProps {
   profile: UserProfile;
-  activeTab: 'home' | 'units' | 'dictionary' | 'achievements' | 'teacher';
-  onSelectTab: (tab: 'home' | 'units' | 'dictionary' | 'achievements' | 'teacher') => void;
+  activeTab: 'home' | 'units' | 'dictionary';
+  onSelectTab: (tab: 'home' | 'units' | 'dictionary') => void;
   onOpenProfile: () => void;
   onToggleSound: () => void;
 }
@@ -92,18 +92,6 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
 
           <button
-            onClick={() => onSelectTab('achievements')}
-            className={`flex items-center gap-2 py-3 px-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'achievements'
-                ? 'border-amber-500 text-amber-700 font-black bg-amber-50/70 rounded-t-lg'
-                : 'border-transparent text-amber-800/80 hover:text-amber-900'
-            }`}
-          >
-            <span className="text-base">🏆</span>
-            <span>Bảng Vàng 成績</span>
-          </button>
-
-          <button
             onClick={() => onSelectTab('units')}
             className={`flex items-center gap-2 py-3 px-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'units'
@@ -125,18 +113,6 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Search className="w-4 h-4" />
             <span>Tra từ vựng</span>
-          </button>
-
-          <button
-            onClick={() => onSelectTab('teacher')}
-            className={`flex items-center gap-2 py-3 px-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'teacher'
-                ? 'border-purple-600 text-purple-700 font-black bg-purple-50/50 rounded-t-lg'
-                : 'border-transparent text-purple-600/70 hover:text-purple-800'
-            }`}
-          >
-            <GraduationCap className="w-4 h-4 text-purple-600" />
-            <span>Góc Giáo Viên 👩‍🏫</span>
           </button>
         </div>
       </nav>

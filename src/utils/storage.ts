@@ -15,14 +15,33 @@ export const DEFAULT_PROFILE: UserProfile = {
 };
 
 export function loadProfile(): UserProfile {
-  if (typeof window === 'undefined') return DEFAULT_PROFILE;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_PROFILE;
-    return { ...DEFAULT_PROFILE, ...JSON.parse(raw) };
-  } catch {
-    return DEFAULT_PROFILE;
+  let profile = DEFAULT_PROFILE;
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        profile = { ...DEFAULT_PROFILE, ...JSON.parse(raw) };
+      }
+    } catch {
+      profile = DEFAULT_PROFILE;
+    }
+
+    // Parse URL query parameters if student name / class provided in URL link
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const urlName = params.get('name') || params.get('student') || params.get('studentName');
+      const urlClass = params.get('class') || params.get('className') || params.get('studentClass');
+      if (urlName) {
+        profile = { ...profile, name: decodeURIComponent(urlName) };
+      }
+      if (urlClass) {
+        profile = { ...profile, className: decodeURIComponent(urlClass) };
+      }
+    } catch {
+      // URL parsing fallback
+    }
   }
+  return profile;
 }
 
 export function saveProfile(profile: UserProfile): void {

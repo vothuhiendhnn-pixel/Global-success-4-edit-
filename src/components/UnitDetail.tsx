@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { ArrowLeft, BookOpen, Mic, Dumbbell, Sparkles } from 'lucide-react';
+import { ArrowLeft, BookOpen, Mic, Dumbbell, Sparkles, BookMarked } from 'lucide-react';
 import { Unit, UserProfile } from '../types';
 import { FlashcardView } from './FlashcardView';
 import { PronunciationPractice } from './PronunciationPractice';
 import { PracticeExercises } from './PracticeExercises';
+import { ReadingModule } from './ReadingModule';
 
 interface UnitDetailProps {
   unit: Unit;
@@ -24,7 +25,7 @@ export const UnitDetail: React.FC<UnitDetailProps> = ({
   onOpenStudentInfoModal,
   showToast
 }) => {
-  const [activeTab, setActiveTab] = useState<'flashcard' | 'pronounce' | 'practice'>('flashcard');
+  const [activeTab, setActiveTab] = useState<'flashcard' | 'pronounce' | 'reading' | 'practice'>('flashcard');
 
   return (
     <div className="space-y-6 pb-12">
@@ -55,42 +56,54 @@ export const UnitDetail: React.FC<UnitDetailProps> = ({
         </div>
       </div>
 
-      {/* 3 Main Mode Tabs */}
-      <div className="flex bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/80 text-xs sm:text-sm font-bold text-slate-600 gap-1.5">
+      {/* 4 Main Mode Tabs */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/80 text-xs sm:text-sm font-bold text-slate-600 gap-1.5">
         <button
           onClick={() => setActiveTab('flashcard')}
-          className={`flex-1 py-3 px-3 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
+          className={`py-3 px-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
             activeTab === 'flashcard'
               ? 'bg-white text-emerald-700 shadow-xs font-extrabold'
               : 'hover:text-slate-900'
           }`}
         >
-          <BookOpen className="w-4 h-4 text-emerald-600" />
+          <BookOpen className="w-4 h-4 text-emerald-600 shrink-0" />
           <span>Thẻ từ vựng</span>
         </button>
 
         <button
           onClick={() => setActiveTab('pronounce')}
-          className={`flex-1 py-3 px-3 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
+          className={`py-3 px-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
             activeTab === 'pronounce'
               ? 'bg-white text-emerald-700 shadow-xs font-extrabold'
               : 'hover:text-slate-900'
           }`}
         >
-          <Mic className="w-4 h-4 text-emerald-600" />
-          <span>Luyện phát âm</span>
+          <Mic className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>Luyện từ lẻ</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('reading')}
+          className={`py-3 px-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            activeTab === 'reading'
+              ? 'bg-white text-emerald-700 shadow-xs font-extrabold'
+              : 'hover:text-slate-900'
+          }`}
+        >
+          <BookMarked className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>Luyện đọc AI</span>
         </button>
 
         <button
           onClick={() => setActiveTab('practice')}
-          className={`flex-1 py-3 px-3 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
+          className={`py-3 px-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
             activeTab === 'practice'
               ? 'bg-white text-emerald-700 shadow-xs font-extrabold'
               : 'hover:text-slate-900'
           }`}
         >
-          <Dumbbell className="w-4 h-4 text-emerald-600" />
-          <span>Bài tập luyện tập</span>
+          <Dumbbell className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>Bài tập</span>
         </button>
       </div>
 
@@ -111,6 +124,16 @@ export const UnitDetail: React.FC<UnitDetailProps> = ({
         />
       )}
 
+      {activeTab === 'reading' && (
+        <ReadingModule
+          unitNumber={unit.unit}
+          profile={profile}
+          onRewardStars={onRewardStars}
+          onOpenStudentInfoModal={onOpenStudentInfoModal}
+          showToast={showToast}
+        />
+      )}
+
       {activeTab === 'practice' && (
         <PracticeExercises
           unitNumber={unit.unit}
@@ -125,3 +148,4 @@ export const UnitDetail: React.FC<UnitDetailProps> = ({
     </div>
   );
 };
+

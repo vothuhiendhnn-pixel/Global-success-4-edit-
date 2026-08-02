@@ -4,34 +4,17 @@ import { Dashboard } from './components/Dashboard';
 import { UnitList } from './components/UnitList';
 import { UnitDetail } from './components/UnitDetail';
 import { DictionaryView } from './components/DictionaryView';
-import { TeacherDashboard } from './components/TeacherDashboard';
-import { AchievementPortal } from './components/AchievementPortal';
 import { ProfileModal } from './components/ProfileModal';
 import { StudentInfoEntryModal } from './components/StudentInfoEntryModal';
-import { UserProfile, TeacherConfig, StudentRecord } from './types';
+import { UserProfile } from './types';
 import { UNITS_DATA } from './data/units';
 import { loadProfile, saveProfile, resetProfileData } from './utils/storage';
-import { 
-  loadTeacherConfig, 
-  saveTeacherConfig, 
-  loadStudentsList, 
-  saveStudentsList 
-} from './data/teacherData';
 import { initAudioUnlock, playSoundEffect } from './utils/audio';
-import {
-  syncStudentProgressApi,
-  fetchStudentsApi,
-  saveTeacherConfigApi,
-  rewardStudentApi,
-  updateStudentsApi
-} from './utils/api';
 
 export default function App() {
   const [profile, setProfile] = useState<UserProfile>(loadProfile);
-  const [teacherConfig, setTeacherConfig] = useState<TeacherConfig>(loadTeacherConfig);
-  const [studentsList, setStudentsList] = useState<StudentRecord[]>(loadStudentsList);
 
-  const [activeTab, setActiveTab] = useState<'home' | 'units' | 'dictionary' | 'achievements' | 'teacher'>('achievements');
+  const [activeTab, setActiveTab] = useState<'home' | 'units' | 'dictionary'>('home');
   const [selectedUnitNumber, setSelectedUnitNumber] = useState<number | null>(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isStudentInfoModalOpen, setIsStudentInfoModalOpen] = useState(false);
@@ -43,52 +26,10 @@ export default function App() {
     initAudioUnlock();
   }, []);
 
-  // Sync student profile with central server database whenever profile updates
+  // Sync profile locally
   useEffect(() => {
     saveProfile(profile);
-
-    // Call central server API to save student name and progress for Teacher Dashboard
-    syncStudentProgressApi(profile).then((data) => {
-      if (data) {
-        if (data.studentId && profile.id !== data.studentId) {
-          setProfile((prev) => ({ ...prev, id: data.studentId }));
-        }
-        if (data.students && Array.isArray(data.students)) {
-          setStudentsList(data.students);
-        }
-        if (data.config) {
-          setTeacherConfig(data.config);
-        }
-      }
-    });
-  }, [profile.name, profile.className, profile.avatar, profile.stars, profile.masteredWords, profile.completedUnits]);
-
-  // Save teacher config locally & on server
-  useEffect(() => {
-    saveTeacherConfig(teacherConfig);
-    saveTeacherConfigApi(teacherConfig);
-  }, [teacherConfig]);
-
-  // Save students list locally & on server
-  useEffect(() => {
-    saveStudentsList(studentsList);
-  }, [studentsList]);
-
-  // Periodic refresh when on Teacher tab or app load
-  useEffect(() => {
-    const loadFreshData = () => {
-      fetchStudentsApi().then((res) => {
-        if (res) {
-          if (res.students) setStudentsList(res.students);
-          if (res.config) setTeacherConfig(res.config);
-        }
-      });
-    };
-
-    loadFreshData();
-    const interval = setInterval(loadFreshData, 6000); // Poll every 6 seconds for live student progress
-    return () => clearInterval(interval);
-  }, []);
+  }, [profile]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -158,7 +99,7 @@ export default function App() {
       lastAccessedUnit: unitNumber
     }));
 
-    // If profile name is still default placeholder or name/class unconfirmed, open Student Info Modal first
+    // If profile name is default placeholder or empty, open Student Info Modal first
     if (!profile.name || profile.name.includes("Nguyễn Văn A") || !profile.className) {
       setPendingUnitNumber(unitNumber);
       setIsStudentInfoModalOpen(true);
@@ -189,19 +130,6 @@ export default function App() {
     setSelectedUnitNumber(null);
     setActiveTab('home');
     showToast('Đã đặt lại dữ liệu thành công!');
-  };
-
-  const handleRewardStudentFromTeacher = (studentId: string, starsCount: number, note: string) => {
-    rewardStudentApi(studentId, starsCount, note).then((updatedList) => {
-      if (updatedList) setStudentsList(updatedList);
-    });
-    if (profile.id === studentId || profile.name.includes("Nguyễn Văn A")) {
-      setProfile(prev => ({
-        ...prev,
-        stars: prev.stars + starsCount
-      }));
-    }
-    showToast(`Đã tuyên dương và cộng +${starsCount}⭐ cho học sinh!`);
   };
 
   const selectedUnitObj = selectedUnitNumber
@@ -251,11 +179,9 @@ export default function App() {
             {activeTab === 'home' && (
               <Dashboard
                 profile={profile}
-                teacherConfig={teacherConfig}
                 onSelectUnit={handleSelectUnit}
                 onNavigateUnits={() => setActiveTab('units')}
                 onNavigateDictionary={() => setActiveTab('dictionary')}
-                onNavigateTeacher={() => setActiveTab('teacher')}
                 onOpenProfile={() => setIsProfileOpen(true)}
                 onCompleteTask={handleCompleteTask}
               />
@@ -268,30 +194,7 @@ export default function App() {
               />
             )}
 
-            {activeTab === 'achievements' && (
-              <AchievementPortal
-                profile={profile}
-                showToast={showToast}
-              />
-            )}
-
             {activeTab === 'dictionary' && <DictionaryView />}
-
-            {activeTab === 'teacher' && (
-              <TeacherDashboard
-                students={studentsList}
-                config={teacherConfig}
-                onUpdateConfig={(newConfig) => {
-                  setTeacherConfig(newConfig);
-                  showToast('Đã lưu cấu hình phân công bài tập!');
-                }}
-                onUpdateStudents={(newStudents) => {
-                  setStudentsList(newStudents);
-                  showToast('Đã cập nhật dữ liệu danh sách học sinh!');
-                }}
-                onRewardStudent={handleRewardStudentFromTeacher}
-              />
-            )}
           </>
         )}
       </main>

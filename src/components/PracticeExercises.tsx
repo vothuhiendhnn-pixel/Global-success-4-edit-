@@ -110,7 +110,7 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
 
     const payload = {
       studentName: profile.name || 'Học sinh',
-      studentClass: profile.className || 'Lớp 4A',
+      studentClass: profile.className || '',
       unitTitle: title,
       score: scoreStr,
       correctAnswers: correctCount,
@@ -118,17 +118,11 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
       wrongAnswers: wrongCount
     };
 
-    await submitToGoogleSheetApi(payload);
+    // Send POST in background
+    submitToGoogleSheetApi(payload);
 
     setIsSubmitting(false);
     setSubmittedMode((prev) => ({ ...prev, [mode]: true }));
-
-    const msg = `🚀 Đã nộp bài tập của ${payload.studentName} (${payload.studentClass}) về Google Sheet giáo viên thành công!`;
-    if (showToast) {
-      showToast(msg);
-    } else {
-      alert(msg);
-    }
   };
 
   // Auto submit when game modes finish
@@ -283,8 +277,10 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
         } else {
           setQuizFinished(true);
           const finalScore = quizScore + 1;
-          const starReward = finalScore >= Math.ceil(quizQuestions.length * 0.8) ? 15 : 5;
-          onRewardStars(starReward);
+          const isPerfect = finalScore === quizQuestions.length && quizWrongScore === 0 && quizSkippedScore === 0;
+          if (isPerfect) {
+            onRewardStars(20);
+          }
         }
       }, 1200);
     } else {
@@ -307,8 +303,10 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
             setQuizAttempts(0);
           } else {
             setQuizFinished(true);
-            const starReward = quizScore >= Math.ceil(quizQuestions.length * 0.8) ? 15 : 5;
-            onRewardStars(starReward);
+            const isPerfect = quizScore === quizQuestions.length && quizWrongScore === 0 && quizSkippedScore === 0;
+            if (isPerfect) {
+              onRewardStars(20);
+            }
           }
         }, 2800);
       }
@@ -326,8 +324,7 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
       setQuizAttempts(0);
     } else {
       setQuizFinished(true);
-      const starReward = quizScore >= Math.ceil(quizQuestions.length * 0.8) ? 15 : 5;
-      onRewardStars(starReward);
+      // Skip used: no stars rewarded for non-100% perfect attempts
     }
   };
 
@@ -369,7 +366,11 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
           setReorderAttempts(0);
         } else {
           setReorderFinished(true);
-          onRewardStars(20);
+          const finalScore = reorderScore + 1;
+          const isPerfect = finalScore === reorderSentences.length && reorderWrongScore === 0 && reorderSkippedScore === 0;
+          if (isPerfect) {
+            onRewardStars(20);
+          }
         }
       }, 1400);
     } else {
@@ -398,7 +399,10 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
             setReorderAttempts(0);
           } else {
             setReorderFinished(true);
-            onRewardStars(20);
+            const isPerfect = reorderScore === reorderSentences.length && reorderWrongScore === 0 && reorderSkippedScore === 0;
+            if (isPerfect) {
+              onRewardStars(20);
+            }
           }
         }, 3000);
       }
@@ -418,7 +422,7 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
       setReorderAttempts(0);
     } else {
       setReorderFinished(true);
-      onRewardStars(15);
+      // Skip used: no stars rewarded
     }
   };
 
@@ -444,8 +448,12 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
           setFillAttempts(0);
         } else {
           setFillFinished(true);
-          const starReward = fillScore + 1 >= 8 ? 20 : 10;
-          onRewardStars(starReward);
+          const finalScore = fillScore + 1;
+          const totalQ = extraData.fill_in_blanks.questions.length;
+          const isPerfect = finalScore === totalQ && fillWrongScore === 0 && fillSkippedScore === 0;
+          if (isPerfect) {
+            onRewardStars(20);
+          }
         }
       }, 1400);
     } else {
@@ -474,8 +482,11 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
             setFillAttempts(0);
           } else {
             setFillFinished(true);
-            const starReward = fillScore >= 8 ? 20 : 10;
-            onRewardStars(starReward);
+            const totalQ = extraData.fill_in_blanks.questions.length;
+            const isPerfect = fillScore === totalQ && fillWrongScore === 0 && fillSkippedScore === 0;
+            if (isPerfect) {
+              onRewardStars(20);
+            }
           }
         }, 2800);
       }
@@ -493,8 +504,7 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
       setFillAttempts(0);
     } else {
       setFillFinished(true);
-      const starReward = fillScore >= 8 ? 20 : 10;
-      onRewardStars(starReward);
+      // Skip used: no stars rewarded
     }
   };
 
@@ -799,42 +809,23 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
               </>
             )
           ) : (
-            <div className="text-center py-6 space-y-4">
-              <div className="w-16 h-16 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto text-3xl animate-bounce">
-                🎉
+            <div className="text-center py-8 px-4 space-y-4 animate-fade-in">
+              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
+                <CheckCircle2 className="w-10 h-10" />
               </div>
-              <h3 className="text-2xl font-black text-slate-900">Hoàn thành Sắp xếp câu!</h3>
-              <p className="text-sm font-semibold text-slate-600">
-                Tổng kết bài làm Sắp xếp câu ({reorderSentences.length} câu)
+              <h3 className="text-2xl sm:text-3xl font-black text-emerald-800">
+                Bạn đã hoàn thành bài tập!
+              </h3>
+              <p className="text-xs sm:text-sm font-semibold text-slate-600 max-w-md mx-auto">
+                Kết quả bài làm đã được tự động ghi nhận ngầm an toàn. Cảm ơn em đã chăm chỉ học tập! 🎉
               </p>
-
-              {/* Detailed Breakdown [Đúng] - [Sai] - [Đã bỏ qua] */}
-              <div className="grid grid-cols-3 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 max-w-sm mx-auto my-2 text-center shadow-2xs">
-                <div className="p-2.5 bg-emerald-50/90 rounded-xl border border-emerald-200">
-                  <div className="text-[11px] font-bold text-emerald-700">✅ Đúng</div>
-                  <div className="text-xl font-black text-emerald-800 pt-0.5">{reorderScore}</div>
-                </div>
-                <div className="p-2.5 bg-rose-50/90 rounded-xl border border-rose-200">
-                  <div className="text-[11px] font-bold text-rose-700">❌ Sai</div>
-                  <div className="text-xl font-black text-rose-800 pt-0.5">{reorderWrongScore}</div>
-                </div>
-                <div className="p-2.5 bg-amber-50/90 rounded-xl border border-amber-200">
-                  <div className="text-[11px] font-bold text-amber-700">⏭️ Đã bỏ qua</div>
-                  <div className="text-xl font-black text-amber-800 pt-0.5">{reorderSkippedScore}</div>
-                </div>
-              </div>
-
-              <div className="inline-block bg-amber-50 border border-amber-200 px-4 py-2 rounded-2xl text-amber-800 font-bold text-sm">
-                Thưởng tích lũy: ⭐ +20 Sao!
-              </div>
-
-              <div>
+              <div className="pt-2">
                 <button
                   onClick={initReorderGame}
-                  className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl text-xs gap-2 inline-flex items-center cursor-pointer shadow-xs"
+                  className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-md transition-all cursor-pointer inline-flex items-center gap-2"
                 >
                   <RotateCcw className="w-4 h-4" />
-                  <span>Chơi lại bài này</span>
+                  <span>Làm lại bài này</span>
                 </button>
               </div>
             </div>
@@ -943,42 +934,23 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
                 )}
               </>
             ) : (
-              <div className="text-center py-6 space-y-4">
-                <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto text-3xl animate-bounce">
-                  📝
+              <div className="text-center py-8 px-4 space-y-4 animate-fade-in">
+                <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
+                  <CheckCircle2 className="w-10 h-10" />
                 </div>
-                <h3 className="text-2xl font-black text-slate-900">Hoàn thành bài Điền từ!</h3>
-                <p className="text-sm font-semibold text-slate-600">
-                  Tổng kết bài làm Điền vào chỗ trống ({extraData.fill_in_blanks.questions.length} câu)
+                <h3 className="text-2xl sm:text-3xl font-black text-emerald-800">
+                  Bạn đã hoàn thành bài tập!
+                </h3>
+                <p className="text-xs sm:text-sm font-semibold text-slate-600 max-w-md mx-auto">
+                  Kết quả bài làm đã được tự động ghi nhận ngầm an toàn. Cảm ơn em đã chăm chỉ học tập! 🎉
                 </p>
-
-                {/* Detailed Breakdown [Đúng] - [Sai] - [Đã bỏ qua] */}
-                <div className="grid grid-cols-3 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 max-w-sm mx-auto my-2 text-center shadow-2xs">
-                  <div className="p-2.5 bg-emerald-50/90 rounded-xl border border-emerald-200">
-                    <div className="text-[11px] font-bold text-emerald-700">✅ Đúng</div>
-                    <div className="text-xl font-black text-emerald-800 pt-0.5">{fillScore}</div>
-                  </div>
-                  <div className="p-2.5 bg-rose-50/90 rounded-xl border border-rose-200">
-                    <div className="text-[11px] font-bold text-rose-700">❌ Sai</div>
-                    <div className="text-xl font-black text-rose-800 pt-0.5">{fillWrongScore}</div>
-                  </div>
-                  <div className="p-2.5 bg-amber-50/90 rounded-xl border border-amber-200">
-                    <div className="text-[11px] font-bold text-amber-700">⏭️ Đã bỏ qua</div>
-                    <div className="text-xl font-black text-amber-800 pt-0.5">{fillSkippedScore}</div>
-                  </div>
-                </div>
-
-                <div className="inline-block bg-amber-50 border border-amber-200 px-4 py-2 rounded-2xl text-amber-800 font-bold text-sm">
-                  Thưởng tích lũy: ⭐ +20 Sao!
-                </div>
-
-                <div>
+                <div className="pt-2">
                   <button
                     onClick={initFillGame}
-                    className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl text-xs gap-2 inline-flex items-center cursor-pointer shadow-xs"
+                    className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-md transition-all cursor-pointer inline-flex items-center gap-2"
                   >
                     <RotateCcw className="w-4 h-4" />
-                    <span>Thử lại bài này</span>
+                    <span>Làm lại bài này</span>
                   </button>
                 </div>
               </div>
@@ -1084,42 +1056,23 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
               </>
             )
           ) : (
-            <div className="text-center py-6 space-y-4">
-              <div className="w-16 h-16 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto text-3xl animate-bounce">
-                🏆
+            <div className="text-center py-8 px-4 space-y-4 animate-fade-in">
+              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
+                <CheckCircle2 className="w-10 h-10" />
               </div>
-              <h3 className="text-2xl font-black text-slate-900">Hoàn thành Trắc nghiệm!</h3>
-              <p className="text-sm font-semibold text-slate-600">
-                Tổng kết bài làm Trắc nghiệm ({quizQuestions.length} câu)
+              <h3 className="text-2xl sm:text-3xl font-black text-emerald-800">
+                Bạn đã hoàn thành bài tập!
+              </h3>
+              <p className="text-xs sm:text-sm font-semibold text-slate-600 max-w-md mx-auto">
+                Kết quả bài làm đã được tự động ghi nhận ngầm an toàn. Cảm ơn em đã chăm chỉ học tập! 🎉
               </p>
-
-              {/* Detailed Breakdown [Đúng] - [Sai] - [Đã bỏ qua] */}
-              <div className="grid grid-cols-3 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 max-w-sm mx-auto my-2 text-center shadow-2xs">
-                <div className="p-2.5 bg-emerald-50/90 rounded-xl border border-emerald-200">
-                  <div className="text-[11px] font-bold text-emerald-700">✅ Đúng</div>
-                  <div className="text-xl font-black text-emerald-800 pt-0.5">{quizScore}</div>
-                </div>
-                <div className="p-2.5 bg-rose-50/90 rounded-xl border border-rose-200">
-                  <div className="text-[11px] font-bold text-rose-700">❌ Sai</div>
-                  <div className="text-xl font-black text-rose-800 pt-0.5">{quizWrongScore}</div>
-                </div>
-                <div className="p-2.5 bg-amber-50/90 rounded-xl border border-amber-200">
-                  <div className="text-[11px] font-bold text-amber-700">⏭️ Đã bỏ qua</div>
-                  <div className="text-xl font-black text-amber-800 pt-0.5">{quizSkippedScore}</div>
-                </div>
-              </div>
-
-              <div className="inline-block bg-amber-50 border border-amber-200 px-4 py-2 rounded-2xl text-amber-800 font-bold text-sm">
-                Thưởng tích lũy: ⭐ +15 Sao!
-              </div>
-
-              <div>
+              <div className="pt-2">
                 <button
                   onClick={initQuizGame}
-                  className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl text-xs gap-2 inline-flex items-center cursor-pointer shadow-xs"
+                  className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-md transition-all cursor-pointer inline-flex items-center gap-2"
                 >
                   <RotateCcw className="w-4 h-4" />
-                  <span>Thử lại lần nữa</span>
+                  <span>Làm lại bài này</span>
                 </button>
               </div>
             </div>
@@ -1164,25 +1117,23 @@ export const PracticeExercises: React.FC<PracticeExercisesProps> = ({
               </div>
             </>
           ) : (
-            <div className="text-center py-6 space-y-4">
-              <div className="w-16 h-16 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto text-3xl animate-bounce">
-                🧩
+            <div className="text-center py-8 px-4 space-y-4 animate-fade-in">
+              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
+                <CheckCircle2 className="w-10 h-10" />
               </div>
-              <h3 className="text-2xl font-black text-slate-900">Tuyệt vời! Ghép thẻ hoàn tất!</h3>
-              <p className="text-sm font-semibold text-slate-600">
-                Bạn đã tìm được tất cả các cặp từ vựng tương ứng.
+              <h3 className="text-2xl sm:text-3xl font-black text-emerald-800">
+                Bạn đã hoàn thành bài tập!
+              </h3>
+              <p className="text-xs sm:text-sm font-semibold text-slate-600 max-w-md mx-auto">
+                Kết quả bài làm đã được tự động ghi nhận ngầm an toàn. Cảm ơn em đã chăm chỉ học tập! 🎉
               </p>
-              <div className="inline-block bg-amber-50 border border-amber-200 px-4 py-2 rounded-2xl text-amber-800 font-bold text-sm">
-                Thưởng tích lũy: ⭐ +20 Sao!
-              </div>
-
-              <div>
+              <div className="pt-2">
                 <button
                   onClick={initMemoryGame}
-                  className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl text-xs gap-2 inline-flex items-center cursor-pointer shadow-xs"
+                  className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-md transition-all cursor-pointer inline-flex items-center gap-2"
                 >
                   <RotateCcw className="w-4 h-4" />
-                  <span>Xáo bài & Chơi lại</span>
+                  <span>Làm lại bài này</span>
                 </button>
               </div>
             </div>
